@@ -103,6 +103,7 @@ import {
   transformCatalogItemToFormValues,
   transformFormToApiData,
 } from "./mcp-catalog-form.utils";
+import { parseMcpConfigJson } from "./mcp-config-import";
 
 const ExternalSecretSelector = lazy(
   () =>
@@ -161,6 +162,10 @@ export function McpCatalogForm({
   embedded = false,
   affectedServerCount = 0,
 }: McpCatalogFormProps) {
+  const [configImport, setConfigImport] = useState("");
+  const [configImportError, setConfigImportError] = useState<string | null>(
+    null,
+  );
   const localConfigSecretId =
     initialValues?.serverType === "local"
       ? initialValues.localConfigSecretId
@@ -263,6 +268,44 @@ export function McpCatalogForm({
           environmentId: null,
         }),
   });
+
+  const importMcpConfig = () => {
+    try {
+      const imported = parseMcpConfigJson(configImport);
+      form.setValue("serverType", imported.serverType, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+      if (imported.name && !form.getValues("name")) {
+        form.setValue("name", imported.name, { shouldDirty: true });
+      }
+      if (imported.serverType === "remote") {
+        form.setValue("serverUrl", imported.serverUrl ?? "", {
+          shouldDirty: true,
+          shouldValidate: true,
+        });
+        form.setValue("additionalHeaders", imported.additionalHeaders ?? [], {
+          shouldDirty: true,
+        });
+      } else {
+        form.setValue("localConfig.command", imported.command ?? "", {
+          shouldDirty: true,
+          shouldValidate: true,
+        });
+        form.setValue("localConfig.arguments", imported.arguments ?? "", {
+          shouldDirty: true,
+        });
+        form.setValue("localConfig.environment", imported.environment ?? [], {
+          shouldDirty: true,
+        });
+      }
+      setConfigImportError(null);
+    } catch (error) {
+      setConfigImportError(
+        error instanceof Error ? error.message : "Unable to import config",
+      );
+    }
+  };
 
   // Expose imperative submit to parent
   useEffect(() => {
@@ -1172,6 +1215,47 @@ export function McpCatalogForm({
             {currentServerType !== "remote" && <Separator />}
 
             <div className="space-y-4">
+              <div className="space-y-2 rounded-lg border p-4">
+                <div>
+                  <h3 className="font-semibold text-base">
+                    Import MCP configuration
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    Paste a complete JSON config from Claude Desktop, VS Code,
+                    or another MCP catalog. The detected server settings will
+                    populate the form below.
+                  </p>
+                </div>
+                <Textarea
+                  aria-label="MCP configuration JSON"
+                  value={configImport}
+                  onChange={(event) => setConfigImport(event.target.value)}
+                  placeholder={`{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": { "GITHUB_TOKEN": "<token>" }
+    }
+  }
+}`}
+                  className="min-h-36 font-mono"
+                />
+                {configImportError && (
+                  <p className="text-sm text-destructive">
+                    {configImportError}
+                  </p>
+                )}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={!configImport.trim()}
+                  onClick={importMcpConfig}
+                >
+                  Import configuration
+                </Button>
+              </div>
+
               {currentServerType === "remote" ? null : (
                 <div className="space-y-1">
                   <h3 className="font-semibold text-base">Deployment</h3>
